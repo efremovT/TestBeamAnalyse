@@ -10,9 +10,6 @@
 #include <TMinuit.h>
 #include <TColor.h>
 #include <TLine.h>
-#include "/home/nikolic/ATLAS/style/AtlasStyle.C"
-#include "/home/nikolic/ATLAS/style/AtlasUtils.C"
-#include "/home/nikolic/ATLAS/style/AtlasLabels.C"
 
 
 //==============================================================================
