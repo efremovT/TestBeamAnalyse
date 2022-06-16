@@ -10,6 +10,9 @@
 #include <TMinuit.h>
 #include <TColor.h>
 #include <TLine.h>
+#include "/home/nikolic/ATLAS/style/AtlasStyle.C"
+#include "/home/nikolic/ATLAS/style/AtlasUtils.C"
+#include "/home/nikolic/ATLAS/style/AtlasLabels.C"
 
 
 //==============================================================================
@@ -72,7 +75,7 @@ void monanalyse::Loop()
    
    //NOM DUT
    TString DUTname[3]{"FBK_W19 ","IMEv2_W7Q2","SIPM"};
-   TString Fitname[3]{">1fC Chi_Square",">2fC Chi_Square",">3fC Chi_Square"};
+   TString Fitname[3]{">1fC Binned Likelihood",">2fC Binned Likelihood",">3fC Binned Likelihood"};
    
    TString tirrsensor[3];
    tirrsensor[0] = TString("Irr. 4E14");
@@ -112,7 +115,7 @@ void monanalyse::Loop()
    Float_t TimeMax[2]{5000.,4800.};
    
    Float_t ChargeCut[NDUT]{1,2};
-   Float_t FitCut[NFitOption]{1,2,10};
+   Float_t FitCut[NFitOption]{1,2,3};
 
    
    //---------- CUT  -----------------------------------------------------------
@@ -141,20 +144,20 @@ void monanalyse::Loop()
    //Loop initialisation
    for (Int_t i=0; i<NDUT ; i++) {
       // charge histogram 
-      HCharge[i] = new TH1F(DUTname[i] + "charge",DUTname[i],100,-5,50) ;
-      HChargeOnPad[i] = new TH2F(DUTname[i] + " XtrYtr",DUTname[i] ,NbinBox[0], xmin[i], xmax[i], NbinBox[0], ymin[i], ymax[i]);
-      HChargeOnPadmm[i] = new TH2F(DUTname[i] + "posmm",DUTname[i] ,NbinBox[0], xmin_bis[i], xmax_bis[i], NbinBox[0], ymin_bis[i], ymax_bis[i]);
+      HCharge[i] = new TH1F(DUTname[i] +" h1",DUTname[i] + "charge",100,-5,50) ;
+      HChargeOnPad[i] = new TH2F(DUTname[i] + " h2",DUTname[i] + " XtrYtr",NbinBox[0], xmin[i], xmax[i], NbinBox[0], ymin[i], ymax[i]);
+      HChargeOnPadmm[i] = new TH2F(DUTname[i] + " h3",DUTname[i] + "posmm" ,NbinBox[0], xmin_bis[i], xmax_bis[i], NbinBox[0], ymin_bis[i], ymax_bis[i]);
       
       //GetBinSize while we're at it
       BinSizePos[i] = HChargeOnPadmm[i]->GetXaxis()->GetBinWidth(Nbin);
       
       //Time histogram
-      HTimeAtMaxDiff[i] = new TH1F("Time of SiPM -" + DUTname[i] ,DUTname[i],100,xmin_bis[0],xmin_bis[0]) ;
+      HTimeAtMaxDiff[i] = new TH1F("h4  " + DUTname[i] ,"Time of SiPM -" + DUTname[i],100,xmin_bis[0],xmin_bis[0]) ;
    
       
    //DUT cutting in box
    for (Int_t f=0;f<NFitOption;f++) {
-      HMpvBox[i][f] = new TH2F(DUTname[i] + " MpvOnBox " + Fitname[f],DUTname[i] ,NbinBox[0], xmin_bis[i], xmax_bis[i], NbinBox[0], ymin_bis[i], ymax_bis[i]);
+      HMpvBox[i][f] = new TH2F(DUTname[i] + "h5 " + f,DUTname[i] + " MpvOnBox " + Fitname[f] ,NbinBox[0], xmin_bis[i], xmax_bis[i], NbinBox[0], ymin_bis[i], ymax_bis[i]);
       }
       
       for (Int_t k=0;k<Nbin;k++) {
@@ -248,7 +251,8 @@ for (Int_t ix=0;ix<NbinBox[0];ix++){ //XPOS
 for (Int_t iy=0;iy<NbinBox[0];iy++){ //YPOS
 for (Int_t f=0 ; f<NFitOption ; f++) {
    HChargeFit[ix][iy][i][f] = (TH1F*) HChargeBox[ix][iy][i]->Clone();
-   HChargeFit[ix][iy][i][f]->SetName(  "fit of " + DUTname[i] + Fitname[f]);
+   HChargeFit[ix][iy][i][f]->SetName(  DUTname[i] + f);
+   HChargeFit[ix][iy][i][f]->SetTitle(  "fit of " + DUTname[i] + Fitname[f]);
 }
 }
 }
@@ -260,7 +264,7 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    if (HChargeFit[ix][iy][i][0]->GetEntries() >3000){//condition on number of event
    
    
-   HChargeFit[ix][iy][i][f]->Fit("landau","R","",FitCut[f],50);//condition on charge
+   HChargeFit[ix][iy][i][f]->Fit("landau","RL","",FitCut[f],50);//condition on charge
   
    Clandau[ix][iy][i][f] = HChargeFit[ix][iy][i][f]->GetFunction("landau")->GetParameter(1);
    Cerr[i][f] = HChargeFit[ix][iy][i][f]->GetFunction("landau")->GetParError(1);
@@ -306,7 +310,7 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    MyStyle->SetPadLeftMargin(0.16); 
    MyStyle->SetPadRightMargin(0.15); 
    MyStyle->SetPalette(55); 
-   MyStyle->SetStatX(0.8);
+   MyStyle->SetStatX(0.85);
 
    
    //   MyStyle->SetPalette(kAlpine); 
@@ -369,6 +373,7 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    gPad-> SetTickx();
    gPad-> SetTicky();
    gPad-> SetGrid();
+   gStyle-> SetStatY(0.9);
    c3->Divide(2,1);
    c3->cd(1);
    c3->SetCanvasSize(1600, 600);
@@ -388,7 +393,7 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    HChargeFit[1][1][1][0]-> SetTitleSize(0.042,"x");
    HChargeFit[1][1][1][0]-> SetTitleSize(0.042,"y");
 
-   c3->Print("fig/monanalyse/FitMPV.png");
+   c3->Print("fig/monanalyse/FitMPVlikelihood.png");
    
    
    
@@ -477,7 +482,7 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    HChargeFit[1][1][0][2]-> SetTitleSize(0.042,"y");
    
    
-   c5->Print("fig/monanalyse/MPV_Fit_0.png");
+   c5->Print("fig/monanalyse/MPV_Fit_0_likelihood.png");
    
    cout << BinSizePos[0] << "BinSize" << endl;	
    /*HChargeBox[0][0][0] -> SetLineColor(4);
