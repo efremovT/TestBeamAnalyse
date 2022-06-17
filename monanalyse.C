@@ -69,11 +69,11 @@ void monanalyse::Loop()
    //---------------Standards variables ----------------------------------------
    const Int_t NDUT=2; //Number DUT
    const Int_t Nbin{100}; //Std Bin
-   const Int_t NbinBox[3]{6,50,100};//bin for box only change first variable
+   const Int_t NbinBox[3]{20,50,100};//bin for box only change first variable
    const Int_t NbinCenter{3};
    const Int_t NFitOption{3};
    Double_t BinSizePos[2]; //Taille bin position
-   
+   Double_t NEventMin[2]{20,40};
    //NOM DUT
    TString DUTname[3]{"FBK_W19 ","IMEv2_W7Q2","SIPM"};
    TString Fitname[3]{" >1fC chi square"," >2fC chi square"," >3fC chi square"};
@@ -86,10 +86,10 @@ void monanalyse::Loop()
    
    
    //--------- Window of plotting XTR YTR for each DUT--------------------------
-   Double_t xmin[2]{519.,535.};
-   Double_t xmax[2]={619.,635.};
-   Double_t ymin[2]={56.,98.};
-   Double_t ymax[2]={156.,198.};	
+   Double_t xmin[2]{538.,548.};
+   Double_t xmax[2]={600.,622.};
+   Double_t ymin[2]={74.,116.};
+   Double_t ymax[2]={136.,184.};	
    Double_t xmin_bis[2];
    Double_t ymin_bis[2];	
    Double_t xmax_bis[2];
@@ -130,27 +130,30 @@ void monanalyse::Loop()
    
    //Charge histograms
    TH1F *HCharge[NDUT];
-   TH2F *HChargeOnPad[NDUT];
-   TH2F *HChargeOnPadmm[NDUT];
+   TH2F *HOccupancy[NDUT];
+   TH2F *HOccupancymm[NDUT];
    
    //Box Histograms
    TH1F *HChargeBox[Nbin][Nbin][NDUT];
    TH2F *HMpvBox[NDUT][NFitOption];
+   TH1F *HChargeFit[NbinBox[0]][NbinBox[0]][NDUT][NFitOption];
+
+
    //Charge
    Double_t Clandau[Nbin][Nbin][NDUT][NFitOption];
    Double_t Cerrlandau[Nbin][Nbin][NDUT][NFitOption];
-   
+   Double_t Cerr[NDUT][NFitOption];
    
    
    //Loop initialisation
    for (Int_t i=0; i<NDUT ; i++) {
       // charge histogram 
       HCharge[i] = new TH1F(DUTname[i] +" h1",DUTname[i] + "charge",100,-5,50) ;
-      HChargeOnPad[i] = new TH2F(DUTname[i] + " h2",DUTname[i] + " XtrYtr",NbinBox[0], xmin[i], xmax[i], NbinBox[0], ymin[i], ymax[i]);
-      HChargeOnPadmm[i] = new TH2F(DUTname[i] + " h3",DUTname[i] + "posmm" ,NbinBox[0], xmin_bis[i], xmax_bis[i], NbinBox[0], ymin_bis[i], ymax_bis[i]); //position in mm
+      HOccupancy[i] = new TH2F(DUTname[i] + " h2",DUTname[i] + " XtrYtr",NbinBox[0], xmin[i], xmax[i], NbinBox[0], ymin[i], ymax[i]);
+      HOccupancymm[i] = new TH2F(DUTname[i] + " h3",DUTname[i] + "posmm" ,NbinBox[0], xmin_bis[i], xmax_bis[i], NbinBox[0], ymin_bis[i], ymax_bis[i]); //position in mm
       
       //GetBinSize while we're at it
-      BinSizePos[i] = HChargeOnPadmm[i]->GetXaxis()->GetBinWidth(Nbin);
+      BinSizePos[i] = HOccupancymm[i]->GetXaxis()->GetBinWidth(Nbin);
       
       //Time histogram
       HTimeAtMaxDiff[i] = new TH1F("h4  " + DUTname[i] ,"Time of SiPM -" + DUTname[i],100,xmin_bis[0],xmin_bis[0]) ;
@@ -212,8 +215,8 @@ void monanalyse::Loop()
                if (charge[i] >= ChargeCut[i]) { //Charge cut
                
                   HCharge[i]->Fill(charge[i]);
-                  HChargeOnPad[i]->Fill(Xtr[i],Ytr[i]);
-                  HChargeOnPadmm[i]->Fill(convertX(Xtr[i],i),convertY(Ytr[i],i));
+                  HOccupancy[i]->Fill(Xtr[i],Ytr[i]);
+                  HOccupancymm[i]->Fill(convertX(Xtr[i],i),convertY(Ytr[i],i));
                   //Box filling
                   for (Int_t ix=0;ix<NbinBox[0];ix++){ 
                   for (Int_t iy=0;iy<NbinBox[0];iy++){
@@ -244,8 +247,7 @@ void monanalyse::Loop()
 //==============================================================================
 //-------------------------------Analysis---------------------------------------
 //==============================================================================
-Double_t Cerr[NDUT][NFitOption];
-TH1F *HChargeFit[NbinBox[0]][NbinBox[0]][NDUT][NFitOption];
+
 
 for (Int_t i=0 ; i<NDUT ; i++) { //DUT
 for (Int_t ix=0;ix<NbinBox[0];ix++){ //XPOS
@@ -263,7 +265,7 @@ for (Int_t ix=0;ix<NbinBox[0];ix++){ //XPOS
 for (Int_t iy=0;iy<NbinBox[0];iy++){ //YPOS
 for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    //if (HChargeFit[ix][iy][i][0]->GetEntries() >3000){//condition on number of event
-   
+   if (HChargeFit[ix][iy][i][f] -> GetEntries() > NEventMin[i]){
    
    HChargeFit[ix][iy][i][f]->Fit("landau","R","",FitCut[f],50);//condition on charge
   
@@ -275,7 +277,7 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    HMpvBox[0][f]-> SetMinimum(9);
    HMpvBox[1][f]-> SetMinimum(3.5);
 
-//} //end if event 
+} //end if event 
 } //End for fitting option
 } // end for posx
 } // end for posy
@@ -363,25 +365,47 @@ Histogram_fit_localised[x][y][Fit_option][Dut_Number]
    c2->SetCanvasSize(1600, 600);
    c2->SetWindowSize(1630, 630);
    
-   HChargeOnPadmm[0]->Draw("colz");
-   HChargeOnPadmm[0]-> SetYTitle("y in mm");
-   HChargeOnPadmm[0]-> SetXTitle("x in mm");
-   HChargeOnPadmm[0]-> SetTitleSize(0.042,"x in mm");
-   HChargeOnPadmm[0]-> SetTitleSize(0.042,"y in mm");
-   HChargeOnPadmm[0]-> SetZTitle("Events");
-   HChargeOnPadmm[0]-> SetMinimum(200);
+   HOccupancy[0]->Draw("colz");
+   HOccupancy[0]-> SetYTitle("y in mm");
+   HOccupancy[0]-> SetXTitle("x in mm");
+   HOccupancy[0]-> SetTitleSize(0.042,"x in mm");
+   HOccupancy[0]-> SetTitleSize(0.042,"y in mm");
+   HOccupancy[0]-> SetZTitle("Events");
+   HOccupancy[0]-> SetMinimum(0);
    c2->cd(2);
-   HChargeOnPadmm[1]->Draw("colz");
-   HChargeOnPadmm[1]-> SetYTitle("y in mm");
-   HChargeOnPadmm[1]-> SetXTitle("x in mm");
-   HChargeOnPadmm[1]-> SetTitleSize(0.042,"x in mm");
-   HChargeOnPadmm[1]-> SetTitleSize(0.042,"y in mm");
-   HChargeOnPadmm[1]-> SetZTitle("Events");
-   HChargeOnPadmm[1]-> SetMinimum(350);
+   HOccupancy[1]->Draw("colz");
+   HOccupancy[1]-> SetYTitle("y in mm");
+   HOccupancy[1]-> SetXTitle("x in mm");
+   HOccupancy[1]-> SetTitleSize(0.042,"x in mm");
+   HOccupancy[1]-> SetTitleSize(0.042,"y in mm");
+   HOccupancy[1]-> SetZTitle("Events");
+   HOccupancy[1]-> SetMinimum(0);
    
-   c2->Print("fig/monanalyse/Occupation_on_pad_DUT_6x6.png");
+   //c2->Print("fig/monanalyse/Occupation_on_pad_DUT_6x6.png");
    
-
+   TCanvas *c2mm = new TCanvas("c2mm","XtrYtr0");
+   c2mm->Divide(2,1);
+   c2mm->cd(1);
+   c2mm->SetCanvasSize(1600, 600);
+   c2mm->SetWindowSize(1630, 630);
+   
+   HOccupancymm[0]->Draw("colz");
+   HOccupancymm[0]-> SetYTitle("y in mm");
+   HOccupancymm[0]-> SetXTitle("x in mm");
+   HOccupancymm[0]-> SetTitleSize(0.042,"x in mm");
+   HOccupancymm[0]-> SetTitleSize(0.042,"y in mm");
+   HOccupancymm[0]-> SetZTitle("Events");
+   HOccupancymm[0]-> SetMinimum(0);
+   c2mm->cd(2);
+   HOccupancymm[1]->Draw("colz");
+   HOccupancymm[1]-> SetYTitle("y in mm");
+   HOccupancymm[1]-> SetXTitle("x in mm");
+   HOccupancymm[1]-> SetTitleSize(0.042,"x in mm");
+   HOccupancymm[1]-> SetTitleSize(0.042,"y in mm");
+   HOccupancymm[1]-> SetZTitle("Events");
+   HOccupancymm[1]-> SetMinimum(0);
+   
+   c2mm->Print("fig/monanalyse/Occupation_on_pad_DUT_6x6_cut.png");
    /* //Test fit center
    
    TCanvas *c3 = new TCanvas("c3","1BoxCharge");
