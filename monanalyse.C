@@ -69,13 +69,14 @@ void monanalyse::Loop()
    //---------------Standards variables ----------------------------------------
    const Int_t NDUT=2; //Number DUT
    const Int_t Nbin{100}; //Std Bin
-   const Int_t NbinBox[3]{4,50,100};//bin for box
+   const Int_t NbinBox[3]{6,50,100};//bin for box only change first variable
+   const Int_t NbinCenter{3};
    const Int_t NFitOption{3};
    Double_t BinSizePos[2]; //Taille bin position
    
    //NOM DUT
    TString DUTname[3]{"FBK_W19 ","IMEv2_W7Q2","SIPM"};
-   TString Fitname[3]{">1fC Binned Likelihood",">2fC Binned Likelihood",">3fC Binned Likelihood"};
+   TString Fitname[3]{" >1fC chi square"," >2fC chi square"," >3fC chi square"};
    
    TString tirrsensor[3];
    tirrsensor[0] = TString("Irr. 4E14");
@@ -114,7 +115,7 @@ void monanalyse::Loop()
    Float_t TimeMin[2]{3000.,2800.};
    Float_t TimeMax[2]{5000.,4800.};
    
-   Float_t ChargeCut[NDUT]{1,2};
+   Float_t ChargeCut[NDUT]{2,2};
    Float_t FitCut[NFitOption]{1,2,3};
 
    
@@ -146,7 +147,7 @@ void monanalyse::Loop()
       // charge histogram 
       HCharge[i] = new TH1F(DUTname[i] +" h1",DUTname[i] + "charge",100,-5,50) ;
       HChargeOnPad[i] = new TH2F(DUTname[i] + " h2",DUTname[i] + " XtrYtr",NbinBox[0], xmin[i], xmax[i], NbinBox[0], ymin[i], ymax[i]);
-      HChargeOnPadmm[i] = new TH2F(DUTname[i] + " h3",DUTname[i] + "posmm" ,NbinBox[0], xmin_bis[i], xmax_bis[i], NbinBox[0], ymin_bis[i], ymax_bis[i]);
+      HChargeOnPadmm[i] = new TH2F(DUTname[i] + " h3",DUTname[i] + "posmm" ,NbinBox[0], xmin_bis[i], xmax_bis[i], NbinBox[0], ymin_bis[i], ymax_bis[i]); //position in mm
       
       //GetBinSize while we're at it
       BinSizePos[i] = HChargeOnPadmm[i]->GetXaxis()->GetBinWidth(Nbin);
@@ -207,12 +208,12 @@ void monanalyse::Loop()
 	    
             if ( (timeAtMax[2]-timeAtMax[i]) > TimeMin[i] && (timeAtMax[2]-timeAtMax[i]) < TimeMax[i] ) { //If constraint on time are respected
             
-               HCharge[i]->Fill(charge[i]);
-               HChargeOnPad[i]->Fill(Xtr[i],Ytr[i]);
-               HChargeOnPadmm[i]->Fill(convertX(Xtr[i],i),convertY(Ytr[i],i));
-               
+
                if (charge[i] >= ChargeCut[i]) { //Charge cut
-      
+               
+                  HCharge[i]->Fill(charge[i]);
+                  HChargeOnPad[i]->Fill(Xtr[i],Ytr[i]);
+                  HChargeOnPadmm[i]->Fill(convertX(Xtr[i],i),convertY(Ytr[i],i));
                   //Box filling
                   for (Int_t ix=0;ix<NbinBox[0];ix++){ 
                   for (Int_t iy=0;iy<NbinBox[0];iy++){
@@ -252,7 +253,7 @@ for (Int_t iy=0;iy<NbinBox[0];iy++){ //YPOS
 for (Int_t f=0 ; f<NFitOption ; f++) {
    HChargeFit[ix][iy][i][f] = (TH1F*) HChargeBox[ix][iy][i]->Clone();
    HChargeFit[ix][iy][i][f]->SetName(  DUTname[i] + f);
-   HChargeFit[ix][iy][i][f]->SetTitle(  "fit of " + DUTname[i] + Fitname[f]);
+   HChargeFit[ix][iy][i][f]->SetTitle(  "fit of " + DUTname[i] + Fitname[f] + "position = " + ix +" x " + iy +" y ");
 }
 }
 }
@@ -261,19 +262,20 @@ for (Int_t i=0 ; i<NDUT ; i++) { //DUT
 for (Int_t ix=0;ix<NbinBox[0];ix++){ //XPOS
 for (Int_t iy=0;iy<NbinBox[0];iy++){ //YPOS
 for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
-   if (HChargeFit[ix][iy][i][0]->GetEntries() >3000){//condition on number of event
+   //if (HChargeFit[ix][iy][i][0]->GetEntries() >3000){//condition on number of event
    
    
-   HChargeFit[ix][iy][i][f]->Fit("landau","RL","",FitCut[f],50);//condition on charge
+   HChargeFit[ix][iy][i][f]->Fit("landau","R","",FitCut[f],50);//condition on charge
   
    Clandau[ix][iy][i][f] = HChargeFit[ix][iy][i][f]->GetFunction("landau")->GetParameter(1);
    Cerr[i][f] = HChargeFit[ix][iy][i][f]->GetFunction("landau")->GetParError(1);
    Cerrlandau[ix][iy][i][f] = 100.*Cerr[i][f]/(Clandau[ix][iy][i][f]);
    
    HMpvBox[i][f]-> SetBinContent(ix+1,iy+1,Clandau[ix][iy][i][f]);
-   HMpvBox[i][f]-> SetMinimum(3); 
+   HMpvBox[0][f]-> SetMinimum(9);
+   HMpvBox[1][f]-> SetMinimum(3.5);
 
-} //end if event 
+//} //end if event 
 } //End for fitting option
 } // end for posx
 } // end for posy
@@ -286,7 +288,17 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
 //-------------------------------Plot-------------------------------------------
 //==============================================================================
 
+/*
 
+syntax for histograms :
+
+
+Histogram_raw[Dut_Number]
+
+Histogram_fit[Fit_option][Dut_Number]
+
+Histogram_fit_localised[x][y][Fit_option][Dut_Number]
+*/
    
    //------------------------ Plot Start ---------------------------------------
    
@@ -320,6 +332,8 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
   
   
    //SetAtlasStyle();
+   
+    //Test Charge
    TCanvas *c1 = new TCanvas("c1","test");
    gPad-> SetTickx();
    gPad-> SetTicky();
@@ -349,25 +363,26 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    c2->SetCanvasSize(1600, 600);
    c2->SetWindowSize(1630, 630);
    
-   HChargeOnPad[0]->Draw("colz");
-   HChargeOnPad[0]-> SetYTitle("y in mm");
-   HChargeOnPad[0]-> SetXTitle("x in mm");
-   HChargeOnPad[0]-> SetTitleSize(0.042,"x in mm");
-   HChargeOnPad[0]-> SetTitleSize(0.042,"y in mm");
-   HChargeOnPad[0]-> SetZTitle("Events");
-   
+   HChargeOnPadmm[0]->Draw("colz");
+   HChargeOnPadmm[0]-> SetYTitle("y in mm");
+   HChargeOnPadmm[0]-> SetXTitle("x in mm");
+   HChargeOnPadmm[0]-> SetTitleSize(0.042,"x in mm");
+   HChargeOnPadmm[0]-> SetTitleSize(0.042,"y in mm");
+   HChargeOnPadmm[0]-> SetZTitle("Events");
+   HChargeOnPadmm[0]-> SetMinimum(200);
    c2->cd(2);
-   HChargeOnPad[1]->Draw("colz");
-   HChargeOnPad[1]-> SetYTitle("y in mm");
-   HChargeOnPad[1]-> SetXTitle("x in mm");
-   HChargeOnPad[1]-> SetTitleSize(0.042,"x in mm");
-   HChargeOnPad[1]-> SetTitleSize(0.042,"y in mm");
-   HChargeOnPad[1]-> SetZTitle("Events");
+   HChargeOnPadmm[1]->Draw("colz");
+   HChargeOnPadmm[1]-> SetYTitle("y in mm");
+   HChargeOnPadmm[1]-> SetXTitle("x in mm");
+   HChargeOnPadmm[1]-> SetTitleSize(0.042,"x in mm");
+   HChargeOnPadmm[1]-> SetTitleSize(0.042,"y in mm");
+   HChargeOnPadmm[1]-> SetZTitle("Events");
+   HChargeOnPadmm[1]-> SetMinimum(350);
    
-   c2->Print("fig/monanalyse/Charge_on_pad_DUT.png");
+   c2->Print("fig/monanalyse/Occupation_on_pad_DUT_6x6.png");
    
-   
-   
+
+   /* //Test fit center
    
    TCanvas *c3 = new TCanvas("c3","1BoxCharge");
    gPad-> SetTickx();
@@ -379,24 +394,25 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    c3->SetCanvasSize(1600, 600);
    c3->SetWindowSize(1630, 630);
    
-   HChargeFit[1][1][0][0]->Draw("");
-   HChargeFit[1][1][0][0]-> SetYTitle("Number of events");
-   HChargeFit[1][1][0][0]-> SetXTitle("Charge in fC");
-   HChargeFit[1][1][0][0]-> SetTitleSize(0.042,"x");
-   HChargeFit[1][1][0][0]-> SetTitleSize(0.042,"y");
+   HChargeFit[NbinCenter][NbinCenter][0][0]->Draw("");
+   HChargeFit[NbinCenter][NbinCenter][0][0]-> SetYTitle("Number of events");
+   HChargeFit[NbinCenter][NbinCenter][0][0]-> SetXTitle("Charge in fC");
+   HChargeFit[NbinCenter][NbinCenter][0][0]-> SetTitleSize(0.042,"x");
+   HChargeFit[NbinCenter][NbinCenter][0][0]-> SetTitleSize(0.042,"y");
    
    c3->cd(2);
    
-   HChargeFit[1][1][1][0]->Draw("");
-   HChargeFit[1][1][1][0]-> SetYTitle("Number of events");
-   HChargeFit[1][1][1][0]-> SetXTitle("Charge in fC");
-   HChargeFit[1][1][1][0]-> SetTitleSize(0.042,"x");
-   HChargeFit[1][1][1][0]-> SetTitleSize(0.042,"y");
+   HChargeFit[NbinCenter][NbinCenter][1][0]->Draw("");
+   HChargeFit[NbinCenter][NbinCenter][1][0]-> SetYTitle("Number of events");
+   HChargeFit[NbinCenter][NbinCenter][1][0]-> SetXTitle("Charge in fC");
+   HChargeFit[NbinCenter][NbinCenter][1][0]-> SetTitleSize(0.042,"x");
+   HChargeFit[NbinCenter][NbinCenter][1][0]-> SetTitleSize(0.042,"y");
 
    c3->Print("fig/monanalyse/FitMPVlikelihood.png");
    
+   */
    
-   
+    //TEST MPV
    TCanvas *c4 = new TCanvas("c4","Mpv0");
    c4->Divide(2,1);
    c4->cd(1);
@@ -418,10 +434,10 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    HMpvBox[1][0]-> SetTitleSize(0.042,"y in mm");
    HMpvBox[1][0]-> SetZTitle("MpV of charge");
    
-   c4->Print("fig/monanalyse/MPV_DUT.png");
+   c4->Print("fig/monanalyse/MPV_DUT_6x6.png");
    
       
-      
+   /* //Test FIT   
       
    TCanvas *c5 = new TCanvas("c5","Mpv_Fit_0");
    c5->Divide(3,2);
@@ -437,11 +453,11 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    HMpvBox[0][0]-> SetZTitle("MpV of charge");
    
    c5->cd(4);
-   HChargeFit[1][1][0][0]->Draw("");
-   HChargeFit[1][1][0][0]-> SetYTitle("Number of events");
-   HChargeFit[1][1][0][0]-> SetXTitle("Charge in fC");
-   HChargeFit[1][1][0][0]-> SetTitleSize(0.042,"x");
-   HChargeFit[1][1][0][0]-> SetTitleSize(0.042,"y");
+   HChargeFit[NbinCenter][NbinCenter][0][0]->Draw("");
+   HChargeFit[NbinCenter][NbinCenter][0][0]-> SetYTitle("Number of events");
+   HChargeFit[NbinCenter][NbinCenter][0][0]-> SetXTitle("Charge in fC");
+   HChargeFit[NbinCenter][NbinCenter][0][0]-> SetTitleSize(0.042,"x");
+   HChargeFit[NbinCenter][NbinCenter][0][0]-> SetTitleSize(0.042,"y");
    
 
    c5->cd(2);
@@ -456,11 +472,11 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    HMpvBox[0][1]-> SetZTitle("MpV of charge");
    
    c5->cd(5);
-   HChargeFit[1][1][0][1]->Draw("");
-   HChargeFit[1][1][0][1]-> SetYTitle("Number of events");
-   HChargeFit[1][1][0][1]-> SetXTitle("Charge in fC");
-   HChargeFit[1][1][0][1]-> SetTitleSize(0.042,"x");
-   HChargeFit[1][1][0][1]-> SetTitleSize(0.042,"y");
+   HChargeFit[NbinCenter][NbinCenter][0][1]->Draw("");
+   HChargeFit[NbinCenter][NbinCenter][0][1]-> SetYTitle("Number of events");
+   HChargeFit[NbinCenter][NbinCenter][0][1]-> SetXTitle("Charge in fC");
+   HChargeFit[NbinCenter][NbinCenter][0][1]-> SetTitleSize(0.042,"x");
+   HChargeFit[NbinCenter][NbinCenter][0][1]-> SetTitleSize(0.042,"y");
    
    
    c5->cd(3);
@@ -475,16 +491,19 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    HMpvBox[0][2]-> SetZTitle("MpV of charge");
    
    c5->cd(6);
-   HChargeFit[1][1][0][2]->Draw("");
-   HChargeFit[1][1][0][2]-> SetYTitle("Number of events");
-   HChargeFit[1][1][0][2]-> SetXTitle("Charge in fC");
-   HChargeFit[1][1][0][2]-> SetTitleSize(0.042,"x");
-   HChargeFit[1][1][0][2]-> SetTitleSize(0.042,"y");
+   HChargeFit[NbinCenter][NbinCenter][0][2]->Draw("");
+   HChargeFit[NbinCenter][NbinCenter][0][2]-> SetYTitle("Number of events");
+   HChargeFit[NbinCenter][NbinCenter][0][2]-> SetXTitle("Charge in fC");
+   HChargeFit[NbinCenter][NbinCenter][0][2]-> SetTitleSize(0.042,"x");
+   HChargeFit[NbinCenter][NbinCenter][0][2]-> SetTitleSize(0.042,"y");
    
    
    c5->Print("fig/monanalyse/MPV_Fit_0_likelihood.png");
    
    cout << BinSizePos[0] << "BinSize" << endl;	
+   
+   */
+   
    /*HChargeBox[0][0][0] -> SetLineColor(4);
    HChargeBox[0][0][0]-> SetFillColor(4);
    HChargeBox[0][0][0]-> SetFillStyle(3001);
@@ -494,6 +513,36 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    HChargeBox[0][0][0]->SetTitleSize(0.042,"x");
    HChargeBox[0][0][0]->SetTitleSize(0.042,"y");
    HChargeBox[0][0][0]->SetStats();*/
+   
+   
+   
+   TCanvas *fitoccupation = new TCanvas("fitoccupation","FitOccupation");
+   gStyle->SetOptFit(0010);  
+   gStyle->SetOptStat(0000);
+   gStyle-> SetStatY(0.9);
+   fitoccupation->Divide(6,6);
+   
+   
+   Int_t xpos=0;
+   Int_t ypos=0;
+   for (Int_t c=1 ; c<=36 ; c++){
+  
+      if (xpos>= 6) {
+      xpos = 0;
+      ypos += 1;
+      }
+      
+      fitoccupation->cd(c);
+      HChargeFit[xpos][ypos][0][0]->Draw("");
+      HChargeFit[xpos][ypos][0][0]-> SetYTitle("Number of events");
+      HChargeFit[xpos][ypos][0][0]-> SetXTitle("Charge in fC");
+      HChargeFit[xpos][ypos][0][0]-> SetTitleSize(0.042,"x");
+      HChargeFit[xpos][ypos][0][0]-> SetTitleSize(0.042,"y");
+      
+      xpos+=1;
+   }
+   
+   fitoccupation->Print("fig/monanalyse/Fit_occupation.png");
    
 //==============================================================================
 //-------------------------------Plot-------------------------------------------
