@@ -14,6 +14,29 @@
 #include "/home/nikolic/ATLAS/style/AtlasUtils.C"
 #include "/home/nikolic/ATLAS/style/AtlasLabels.C"
 
+#include "RooBinIntegrator.h"
+#include "RooDataHist.h"
+#include "RooDataSet.h"
+#include "RooFFTConvPdf.h"
+#include "RooFit.h"
+#include "RooGaussian.h"
+#include "RooIntegrator1D.h"
+#include "RooLandau.h"
+#include "RooMsgService.h"
+#include "RooNumIntConfig.h"
+#include "RooNumber.h"
+#include "RooPlot.h"
+#include "RooRealVar.h"
+
+#include "TAxis.h"
+#include "TCanvas.h"
+#include "TH1.h"
+#include "TVirtualFFT.h"
+#include <TGraphErrors.h>
+#include <TLatex.h>
+#include <TStyle.h>
+
+using namespace RooFit;
 
 //==============================================================================
 //-------------------------------Définitions------------------------------------
@@ -70,12 +93,13 @@ void monanalyse::Loop()
    const Int_t NDUT=2; //Number DUT
    const Int_t Nbin{100}; //Std Bin
    const Int_t NbinBox[3]{20,50,100};//bin for box only change first variable
-   const Int_t NbinCenter{3};
+   const Int_t NbinCenter{NbinBox[0]/2};
    const Int_t NFitOption{3};
    Double_t BinSizePos[2]; //Taille bin position
-   Double_t NEventMin[2]{20,40};
+   Double_t NEventMin[2]{50,50};
+   
    //NOM DUT
-   TString DUTname[3]{"FBK_W19 ","IMEv2_W7Q2","SIPM"};
+   TString DUTname[3]{"FBK_W19 ","IMEv2_W7Q2 ","SIPM "};
    TString Fitname[3]{" >1fC chi square"," >2fC chi square"," >3fC chi square"};
    
    TString tirrsensor[3];
@@ -115,9 +139,10 @@ void monanalyse::Loop()
    Float_t TimeMin[2]{3000.,2800.};
    Float_t TimeMax[2]{5000.,4800.};
    
-   Float_t ChargeCut[NDUT]{2,2};
-   Float_t FitCut[NFitOption]{1,2,3};
+   Float_t ChargeCut[NDUT]{-3,-3};
+   Float_t FitCut[NFitOption]{0,1,2};
 
+   Float_t PulseHeightCut[2]{7.,770.};
    
    //---------- CUT  -----------------------------------------------------------
    
@@ -132,10 +157,11 @@ void monanalyse::Loop()
    TH1F *HCharge[NDUT];
    TH2F *HOccupancy[NDUT];
    TH2F *HOccupancymm[NDUT];
-   
+   TH1F *HErrGain[NDUT][NFitOption];
    //Box Histograms
    TH1F *HChargeBox[Nbin][Nbin][NDUT];
    TH2F *HMpvBox[NDUT][NFitOption];
+   TH2F *HMpvBoxErr[NDUT][NFitOption];
    TH1F *HChargeFit[NbinBox[0]][NbinBox[0]][NDUT][NFitOption];
 
 
@@ -152,16 +178,26 @@ void monanalyse::Loop()
       HOccupancy[i] = new TH2F(DUTname[i] + " h2",DUTname[i] + " XtrYtr",NbinBox[0], xmin[i], xmax[i], NbinBox[0], ymin[i], ymax[i]);
       HOccupancymm[i] = new TH2F(DUTname[i] + " h3",DUTname[i] + "posmm" ,NbinBox[0], xmin_bis[i], xmax_bis[i], NbinBox[0], ymin_bis[i], ymax_bis[i]); //position in mm
       
+      
+      
       //GetBinSize while we're at it
       BinSizePos[i] = HOccupancymm[i]->GetXaxis()->GetBinWidth(Nbin);
       
+      
+      
+      
       //Time histogram
-      HTimeAtMaxDiff[i] = new TH1F("h4  " + DUTname[i] ,"Time of SiPM -" + DUTname[i],100,xmin_bis[0],xmin_bis[0]) ;
+      HTimeAtMaxDiff[i] = new TH1F("h4  " + DUTname[i] ,"Time of SiPM -" + DUTname[i],100,xmin_bis[0],xmax_bis[0]) ;
    
       
    //DUT cutting in box
    for (Int_t f=0;f<NFitOption;f++) {
       HMpvBox[i][f] = new TH2F(DUTname[i] + "h5 " + f,DUTname[i] + " MpvOnBox " + Fitname[f] ,NbinBox[0], xmin_bis[i], xmax_bis[i], NbinBox[0], ymin_bis[i], ymax_bis[i]);
+      
+      HMpvBoxErr[i][f] = new TH2F(DUTname[i] + "h6 " + f,DUTname[i] + " MpvOnBoxErr " + Fitname[f] ,NbinBox[0], xmin_bis[i], xmax_bis[i], NbinBox[0], ymin_bis[i], ymax_bis[i]);
+      
+      
+      HErrGain[i][f] = new TH1F("HErrGain"+DUTname[i]+ Fitname[f]," Abso Error on the Gain in"+DUTname[i],50,0.,2.);
       }
       
       for (Int_t k=0;k<Nbin;k++) {
@@ -205,7 +241,7 @@ void monanalyse::Loop()
    
    
       //--------------Charge histogram with cut on time and ph------------------
-      if (pulseHeight[2] >= 7.  && pulseHeight[2] <= 770.) { // pulse SiPM 
+      if (pulseHeight[2] >= PulseHeightCut[0]  && pulseHeight[2] <= PulseHeightCut[1]) { // pulse SiPM 
 	  
 	      for (Int_t i=0 ; i<NDUT ; i++) { // for each DUT
 	    
@@ -248,7 +284,7 @@ void monanalyse::Loop()
 //-------------------------------Analysis---------------------------------------
 //==============================================================================
 
-
+//Initialisation of charge fit histogram
 for (Int_t i=0 ; i<NDUT ; i++) { //DUT
 for (Int_t ix=0;ix<NbinBox[0];ix++){ //XPOS
 for (Int_t iy=0;iy<NbinBox[0];iy++){ //YPOS
@@ -260,6 +296,13 @@ for (Int_t f=0 ; f<NFitOption ; f++) {
 }
 }
 }
+
+
+RooPlot *xframemulti[NbinBox[0]][NbinBox[0]][NDUT][NFitOption];
+RooDataHist *dhm[NbinBox[0]][NbinBox[0]][NDUT][NFitOption];
+Double_t mean_landau[2]{14,7};
+
+//Fitting and histogram of MvP
 for (Int_t i=0 ; i<NDUT ; i++) { //DUT
 for (Int_t ix=0;ix<NbinBox[0];ix++){ //XPOS
 for (Int_t iy=0;iy<NbinBox[0];iy++){ //YPOS
@@ -274,14 +317,73 @@ for (Int_t f=0 ; f<NFitOption ; f++) {   //what type of fitting
    Cerrlandau[ix][iy][i][f] = 100.*Cerr[i][f]/(Clandau[ix][iy][i][f]);
    
    HMpvBox[i][f]-> SetBinContent(ix+1,iy+1,Clandau[ix][iy][i][f]);
-   HMpvBox[0][f]-> SetMinimum(9);
-   HMpvBox[1][f]-> SetMinimum(3.5);
+   HMpvBox[0][f]-> SetMinimum(8);
+   HMpvBox[1][f]-> SetMinimum(2.5);
+   
+   HMpvBoxErr[i][f]-> SetBinContent(ix+1,iy+1,Cerrlandau[ix][iy][i][f]);
 
-} //end if event 
+   HErrGain[i][f]->Fill(Cerr[i][f]);
+   } //end if event 
+
+   //roofit each bin
+    RooRealVar x("x", "Charge [fC]", -5, 50);
+    xframemulti[ix][iy][i][f] = x.frame(Name("xframe"), Title(DUTname[i] +"charge fit with landau x gauss"));
+    dhm[ix][iy][i][f] = new RooDataHist("roofit of " + DUTname[i] + Fitname[f] + "position = " + ix +" x " + iy +" y ","roofit of " + DUTname[i] + Fitname[f] + "position = " + ix +" x " + iy +" y ", x,Import(*HChargeFit[ix][iy][i][f]));
+    
+    //landau
+    RooRealVar meanl("MPV", "mean landau", mean_landau[i],
+                  mean_landau[i] - 5, mean_landau[i] + 5);
+    RooRealVar sigl("sl", "sigma landau", 1, 0.1, 10);
+    RooLandau landau("lx", "lx", x, meanl, sigl);
+    
+    //gaus
+    RooRealVar meang("mg", "mg", 0);
+    RooRealVar sigg("sg", "sg", 2, 0.1, 10);
+    RooGaussian gauss("gauss", "gauss", x, meang, sigg);
+    
+    
+    RooFFTConvPdf glandau("glandau", "landau (X) gauss", x, landau, gauss);
+    RooFitResult *res = glandau.fitTo(*dhm[ix][iy][i][f]);
+    
+    dhm[ix][iy][i][f]->plotOn(xframemulti[ix][iy][i][f]);
+    glandau.paramOn(xframemulti[ix][iy][i][f], Parameters(meanl), Layout(0.5, 0.85, 0.7));
+    glandau.paramOn(xframemulti[ix][iy][i][f], Parameters(sigl), Layout(0.5, 0.85, 0.6));
+    glandau.paramOn(xframemulti[ix][iy][i][f], Parameters(sigg), Layout(0.5, 0.85, 0.5));
+    glandau.plotOn(xframemulti[ix][iy][i][f]);
 } //End for fitting option
 } // end for posx
 } // end for posy
 } // end for each dut
+
+
+RooPlot *xframe[NDUT];
+RooDataHist *dh[NDUT];
+  for (Int_t i=0 ; i<NDUT ; i++) {
+    RooRealVar x("x", "Charge [fC]", -5, 50);
+    xframe[i] = x.frame(Name("xframe"), Title(DUTname[i] +"charge fit with landau x gauss"));
+    dh[i] = new RooDataHist("dh" + DUTname[i],"dh" + DUTname[i], x,Import(*HCharge[i]));
+    
+    //landau
+    RooRealVar ml("MPV", "mean landau", mean_landau[i],
+                  mean_landau[i] - 5, mean_landau[i] + 5);
+    RooRealVar sl("sl", "sigma landau", 1, 0.1, 10);
+    RooLandau landau("lx", "lx", x, ml, sl);
+    
+    //gaus
+    RooRealVar mg("mg", "mg", 0);
+    RooRealVar sg("sg", "sg", 2, 0.1, 10);
+    RooGaussian gauss("gauss", "gauss", x, mg, sg);
+    
+    
+    RooFFTConvPdf lxg("lxg", "landau (X) gauss", x, landau, gauss);
+    RooFitResult *res = lxg.fitTo(*dh[i]);
+    
+    dh[i]->plotOn(xframe[i]);
+    lxg.paramOn(xframe[i], Parameters(ml), Layout(0.5, 0.85, 0.7));
+    lxg.paramOn(xframe[i], Parameters(sl), Layout(0.5, 0.85, 0.6));
+    lxg.paramOn(xframe[i], Parameters(sg), Layout(0.5, 0.85, 0.5));
+    lxg.plotOn(xframe[i]);
+  }
 
 //==============================================================================
 //-------------------------------Analysis---------------------------------------
@@ -325,7 +427,7 @@ Histogram_fit_localised[x][y][Fit_option][Dut_Number]
    MyStyle->SetPadRightMargin(0.15); 
    MyStyle->SetPalette(55); 
    MyStyle->SetStatX(0.85);
-
+   
    
    //   MyStyle->SetPalette(kAlpine); 
    gROOT->SetStyle("MyStyle");
@@ -343,7 +445,11 @@ Histogram_fit_localised[x][y][Fit_option][Dut_Number]
    gPad->SetRightMargin(0.13);
    gPad->SetLeftMargin(0.13);
    gPad->SetBottomMargin(0.13);
+   c1->SetCanvasSize(1600, 600);
+   c1->SetWindowSize(1630, 630);
+   c1->Divide(2,1);
    
+   c1->cd(1);
    HCharge[0]->Draw("");
    HCharge[0]-> SetLineColor(4);
    HCharge[0]-> SetFillColor(4);
@@ -354,11 +460,23 @@ Histogram_fit_localised[x][y][Fit_option][Dut_Number]
    HCharge[0]->SetTitleSize(0.042,"x");
    HCharge[0]->SetTitleSize(0.042,"y");
    HCharge[0]->SetStats();
+   
+   c1->cd(2);
+   HCharge[1]->Draw("");
+   HCharge[1]-> SetLineColor(4);
+   HCharge[1]-> SetFillColor(4);
+   HCharge[1]-> SetFillStyle(3001);
+   HCharge[1]-> SetLineWidth(2);
+   HCharge[1]->SetYTitle("Number of event");
+   HCharge[1]->SetXTitle("Charge in fC");
+   HCharge[1]->SetTitleSize(0.042,"x");
+   HCharge[1]->SetTitleSize(0.042,"y");
+   HCharge[1]->SetStats();
     
-   c1->Print("fig/monanalyse/Charge_Dut_0.png");
+   c1->Print("fig/Charge_Dut_0_205.png");
    
    
-   
+   /*
    TCanvas *c2 = new TCanvas("c2","XtrYtr0");
    c2->Divide(2,1);
    c2->cd(1);
@@ -382,8 +500,10 @@ Histogram_fit_localised[x][y][Fit_option][Dut_Number]
    HOccupancy[1]-> SetMinimum(0);
    
    //c2->Print("fig/monanalyse/Occupation_on_pad_DUT_6x6.png");
+   */
    
    TCanvas *c2mm = new TCanvas("c2mm","XtrYtr0");
+   gStyle-> SetStatY(0.9);
    c2mm->Divide(2,1);
    c2mm->cd(1);
    c2mm->SetCanvasSize(1600, 600);
@@ -405,8 +525,10 @@ Histogram_fit_localised[x][y][Fit_option][Dut_Number]
    HOccupancymm[1]-> SetZTitle("Events");
    HOccupancymm[1]-> SetMinimum(0);
    
-   c2mm->Print("fig/monanalyse/Occupation_on_pad_DUT_6x6_cut.png");
-   /* //Test fit center
+   c2mm->Print("fig/Occupation_on_pad_DUT_8x8_cut.png");
+   
+   /*
+    //Test fit center
    
    TCanvas *c3 = new TCanvas("c3","1BoxCharge");
    gPad-> SetTickx();
@@ -458,9 +580,35 @@ Histogram_fit_localised[x][y][Fit_option][Dut_Number]
    HMpvBox[1][0]-> SetTitleSize(0.042,"y in mm");
    HMpvBox[1][0]-> SetZTitle("MpV of charge");
    
-   c4->Print("fig/monanalyse/MPV_DUT_6x6.png");
+   c4->Print("fig/MPV_DUT_8*8.png");
+       //TEST MPVErr
+   TCanvas *c4err = new TCanvas("c4err","Mpv0err");
+   c4err->Divide(2,1);
+   c4err->cd(1);
+   c4err->SetCanvasSize(1600, 600);
+   c4err->SetWindowSize(1630, 630);
    
-      
+   HMpvBoxErr[0][0]->Draw("colz");
+   HMpvBoxErr[0][0]-> SetYTitle("y in mm");
+   HMpvBoxErr[0][0]-> SetXTitle("x in mm");
+   HMpvBoxErr[0][0]-> SetTitleSize(0.042,"x in mm");
+   HMpvBoxErr[0][0]-> SetTitleSize(0.042,"y in mm");
+   HMpvBoxErr[0][0]-> SetZTitle("MpVerr in percent");
+   HMpvBoxErr[1][0]-> SetMaximum(100);
+   
+   c4err->cd(2);
+   HMpvBoxErr[1][0]->Draw("colz");
+   HMpvBoxErr[1][0]-> SetYTitle("y in mm");
+   HMpvBoxErr[1][0]-> SetXTitle("x in mm");
+   HMpvBoxErr[1][0]-> SetTitleSize(0.042,"x in mm");
+   HMpvBoxErr[1][0]-> SetTitleSize(0.042,"y in mm");
+   HMpvBoxErr[1][0]-> SetZTitle("MpVerr in percent");
+   HMpvBoxErr[1][0]-> SetMaximum(100);
+   c4err->Print("fig/MPV_DUTErr_8*8.png");
+   
+   
+   TCanvas *err = new TCanvas("err","err");
+   HErrGain[0][0]->Draw("");
    /* //Test FIT   
       
    TCanvas *c5 = new TCanvas("c5","Mpv_Fit_0");
@@ -539,21 +687,22 @@ Histogram_fit_localised[x][y][Fit_option][Dut_Number]
    HChargeBox[0][0][0]->SetStats();*/
    
    
-   
+   /*
    TCanvas *fitoccupation = new TCanvas("fitoccupation","FitOccupation");
    gStyle->SetOptFit(0010);  
    gStyle->SetOptStat(0000);
    gStyle-> SetStatY(0.9);
-   fitoccupation->Divide(6,6);
-   
+   fitoccupation->Divide(NbinBox[0],NbinBox[0]);
+   fitoccupation->SetCanvasSize(2000, 1600);
+   fitoccupation->SetWindowSize(2030, 1630);
    
    Int_t xpos=0;
-   Int_t ypos=0;
-   for (Int_t c=1 ; c<=36 ; c++){
+   Int_t ypos=NbinBox[0]-1;
+   for (Int_t c=1 ; c<=NbinBox[0]*NbinBox[0] ; c++){
   
-      if (xpos>= 6) {
+      if (xpos >= NbinBox[0]) {
       xpos = 0;
-      ypos += 1;
+      ypos -= 1;
       }
       
       fitoccupation->cd(c);
@@ -566,7 +715,38 @@ Histogram_fit_localised[x][y][Fit_option][Dut_Number]
       xpos+=1;
    }
    
-   fitoccupation->Print("fig/monanalyse/Fit_occupation.png");
+  // fitoccupation->Print("fig/rapport/Fit_rapport.png");
+  */
+  
+    //with roofit
+   TCanvas *fitoccupation = new TCanvas("fitoccupation","FitOccupation");
+   gStyle->SetOptFit(0010);  
+   gStyle->SetOptStat(0000);
+   gStyle-> SetStatY(0.9);
+   fitoccupation->Divide(NbinBox[0],NbinBox[0]);
+   fitoccupation->SetCanvasSize(2000, 1600);
+   fitoccupation->SetWindowSize(2030, 1630);
+   
+   Int_t xpos=0;
+   Int_t ypos=NbinBox[0]-1;
+   for (Int_t c=1 ; c<=NbinBox[0]*NbinBox[0] ; c++){
+  
+      if (xpos >= NbinBox[0]) {
+      xpos = 0;
+      ypos -= 1;
+      }
+      
+      fitoccupation->cd(c);
+      xframemulti[xpos][ypos][0][0]->Draw("");
+      xframemulti[xpos][ypos][0][0]-> SetYTitle("Number of events");
+      xframemulti[xpos][ypos][0][0]-> SetXTitle("Charge in fC");
+      xframemulti[xpos][ypos][0][0]-> SetTitleSize(0.042,"x");
+      xframemulti[xpos][ypos][0][0]-> SetTitleSize(0.042,"y");
+      
+      xpos+=1;
+      }
+      
+   fitoccupation->Print("fig/roofit/6*6roofit.png");
    
 //==============================================================================
 //-------------------------------Plot-------------------------------------------
